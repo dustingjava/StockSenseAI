@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from xgboost import XGBClassifier
 from datetime import datetime
+from utils import StandardScaler
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -22,15 +23,6 @@ SNS_ARN   = os.environ.get("SNS_ARN", "")
 
 s3  = boto3.client("s3",  region_name=REGION)
 sns = boto3.client("sns", region_name=REGION)
-
-# ── Manual StandardScaler ──────────────────────────────────────────────────
-class StandardScaler:
-    def fit_transform(self, X):
-        self.mean_ = np.mean(X, axis=0)
-        self.std_  = np.std(X,  axis=0) + 1e-8
-        return (X - self.mean_) / self.std_
-    def transform(self, X):
-        return (X - self.mean_) / self.std_
 
 # ── Read data from S3 ──────────────────────────────────────────────────────
 def load_from_s3(ticker):

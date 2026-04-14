@@ -1,6 +1,7 @@
 import boto3
 import pandas as pd
 import yfinance as yf
+from ta.momentum import RSIIndicator, StochasticOscillator, WilliamsRIndicator, ROCIndicator
 from ta.trend import MACD, SMAIndicator, EMAIndicator, ADXIndicator
 from ta.volatility import BollingerBands, AverageTrueRange
 from ta.volume import OnBalanceVolumeIndicator
