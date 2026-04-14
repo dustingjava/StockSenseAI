@@ -1,0 +1,55 @@
+name: StockSense AI — Daily Data Fetch
+
+on:
+  schedule:
+    - cron: '0 20 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  fetch-and-upload:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-stocksense
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install yfinance pandas numpy ta boto3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Fetch stock data and upload to S3
+        env:
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: python fetch_and_upload.py
+
+      - name: Trigger Lambda retraining
+        run: |
+          aws lambda invoke \
+            --function-name stocksense-daily-retrain \
+            --region us-east-1 \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            response.json
+          cat response.json
