@@ -16,6 +16,7 @@ from ta.trend import MACD, SMAIndicator, EMAIndicator, ADXIndicator
 from ta.volatility import BollingerBands, AverageTrueRange
 from ta.volume import OnBalanceVolumeIndicator
 from utils import StandardScaler
+from bedrock_explainer import explain_signal
 from xgboost import XGBClassifier
 import shap
 import warnings
@@ -201,6 +202,35 @@ def signal_box(label, prob, conf_thr, pos_label, neg_label):
         st.success(f"🟢 **{label}** → {neg_label} — "
                    f"{(1-prob)*100:.1f}% confidence")
 
+def get_indicator_snapshot(df):
+    latest = df.dropna().iloc[-1]
+    return {
+        "rsi"           : f"{latest.get('momentum_rsi', 0):.1f}",
+        "macd_signal"   : "bullish" if latest.get("trend_macd", 0) > latest.get("trend_macd_signal", 0) else "bearish",
+        "bb_width"      : f"{latest.get('volatility_bbw', 0):.3f}",
+        "vol_ratio"     : f"{latest.get('vol_ratio', 1):.2f}",
+        "price_vs_sma20": f"{latest.get('price_vs_sma20', 0)*100:.1f}",
+    }
+
+def get_shap_factors(booster, scaler, feature_cols, df):
+    try:
+        import shap
+        import xgboost as xgb
+        available   = [c for c in feature_cols if c in df.columns]
+        latest      = df[available].dropna().iloc[[-1]]
+        scaled      = scaler.transform(latest.values)
+        explainer   = shap.TreeExplainer(booster)
+        shap_values = explainer.shap_values(scaled)[0]
+        factors = []
+        for i, col in enumerate(available):
+            factors.append({
+                "indicator": col,
+                "impact"   : float(shap_values[i]),
+                "direction": "pushes HIGH vol" if shap_values[i] > 0 else "pushes LOW vol"
+            })
+        return sorted(factors, key=lambda x: abs(x["impact"]), reverse=True)[:5]
+    except Exception:
+        return []
 # ═════════════════════════════════════════════════════════════════════════════
 # Main app
 # ═════════════════════════════════════════════════════════════════════════════
@@ -279,6 +309,40 @@ if run_btn:
         st.info("📊 **Partial agreement** — two of three models agree.")
     else:
         st.warning("⚠️ **No agreement** — models conflict. Stay cautious.")
+
+
+    # ── LLM Explanation ────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("What does this mean? (AI Explanation)")
+
+    with st.spinner("Generating plain English explanation via Amazon Bedrock..."):
+        indicators   = get_indicator_snapshot(df)
+        shap_factors = get_shap_factors(
+            booster_vol, scaler_vol, features_vol, df
+        )
+        explanation  = explain_signal(
+            ticker     = ticker,
+            prob_vol   = prob_vol,
+            prob_price = prob_price,
+            prob_rsi   = prob_rsi,
+            indicators = indicators,
+            shap_factors = shap_factors
+        )
+
+    st.info(explanation)
+
+    # Show which indicators drove the prediction
+    if shap_factors:
+        st.caption("Top factors driving the volatility prediction:")
+        cols = st.columns(len(shap_factors[:5]))
+        for i, factor in enumerate(shap_factors[:5]):
+            with cols[i]:
+                color = "🔴" if factor["impact"] > 0 else "🟢"
+                st.metric(
+                    label = factor["indicator"].replace("_", " "),
+                    value = f"{abs(factor['impact']):.3f}",
+                    delta = "↑ HIGH vol" if factor["impact"] > 0 else "↓ LOW vol"
+                )
 
     # ── Tabs ───────────────────────────────────────────────────────────────
     st.divider()
@@ -407,3 +471,4 @@ else:
     - 🟢 **Price UP** — model predicts price higher in 5 days
     - 🟢 **RSI bullish** — momentum turning positive
     """)
+

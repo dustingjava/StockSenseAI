@@ -2,8 +2,11 @@ yfinance
 pandas
 numpy
 ta
+boto3
 xgboost
 scikit-learn
-mlflow
+streamlit
+shap
+matplotlib
+plotly
 joblib
-boto3
